@@ -1,0 +1,14 @@
+services:
+  esp32-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Grant hardware access
+    privileged: true
+    tty: true
+    stdin_open: true
+    # restart: always
+    volumes:
+      - ..:/workspaces:cached
+      - /dev:/dev
+      - "/dev/ttyUSB0:/dev/ttyUSB0" # Map the ESP32 port

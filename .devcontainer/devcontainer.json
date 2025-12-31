@@ -1,0 +1,30 @@
+{
+  "name": "ESP32 Docker Compose Env",
+  "initializeCommand": "python ../../esp32_attach.py",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "esp32-dev",
+  "workspaceFolder": "/workspaces",
+  "overrideCommand": false,
+  "runArgs": [
+    "--privileged",
+    "-v", "/dev:/dev"
+  ],
+  "containerEnv": {
+    "PYTHONPATH": "/opt/esp/python_env/idf6.1_py3.12_env/lib/python3.12/site-packages:/opt/esp/idf/components/esptool_py:/opt/esp/idf/components/partition_table:/opt/esp/idf/components/app_update:/opt/esp/idf/components/idf_component_manager",
+    "PATH": "/root/.platformio/penv/bin:/opt/esp/python_env/idf6.1_py3.12_env/bin:/opt/esp/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/sbin:/bin:",
+    "IDF_PATH": "/opt/esp/idf"
+  },
+  "customizations": {
+    "jetbrains": {
+      "backend": "clion",
+      "plugins": [
+        "com.jetbrains.clion",
+        "io.toolisticon.jetbrains.plugin.esp-idf"
+      ],
+      "settings": {
+        "cmake.options": "-DESP_PORT=/dev/ttyUSB0"
+      }
+    }
+  },
+  "remoteUser": "root"
+}
