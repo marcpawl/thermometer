@@ -1,0 +1,9 @@
+# Handle line endings automatically for text files
+* text=auto
+
+# Force Linux line endings (LF) for specific files needed by Docker
+Dockerfile  text eol=lf
+*.sh        text eol=lf
+*.yml       text eol=lf
+*.json      text eol=lf
+.devcontainer/* text eol=lf
