@@ -8,3 +8,14 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 # "Trim" the build. Include the minimal set of components, main, and anything it depends on.
 idf_build_set_property(MINIMAL_BUILD ON)
 project(thermometer)
+
+set(DESTINATION_PATH "${project_dir}/releases")
+
+file(MAKE_DIRECTORY ${DESTINATION_PATH})
+
+add_custom_command(TARGET app POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.bin"
+            "${DESTINATION_PATH}/${CMAKE_PROJECT_NAME}.bin"
+    COMMENT "Copying firmware binary to releases folder..."
+)
