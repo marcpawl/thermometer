@@ -6,8 +6,10 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_app_desc.h"
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -172,8 +174,20 @@ static void get_sha256_of_partitions(void) {
     print_sha256(sha_256, "SHA-256 for current firmware: ");
 }
 
+void check_version() {
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+
+    // This prints the version stored in the binary header
+    ESP_LOGI(TAG, "Running Version: %s\n", app_desc->version);
+
+    // It also stores the compile time and date!
+    ESP_LOGI(TAG, "Compile Time: %s %s\n", app_desc->date, app_desc->time);
+}
+
 void app_main(void) {
     ESP_LOGI(TAG, "OTA example app_main start");
+    check_version();
+
     // Initialize NVS.
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
