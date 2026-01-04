@@ -1,3 +1,5 @@
 build
 cmake-build-debug
+managed_components
 sdkconfig.local
+sdkconfig.old
