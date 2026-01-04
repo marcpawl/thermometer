@@ -10,8 +10,8 @@
     "-v", "/dev:/dev"
   ],
   "containerEnv": {
-    "PYTHONPATH": "/opt/esp/python_env/idf6.1_py3.12_env/lib/python3.12/site-packages:/opt/esp/idf/components/esptool_py:/opt/esp/idf/components/partition_table:/opt/esp/idf/components/app_update:/opt/esp/idf/components/idf_component_manager",
-    "PATH": "/root/.platformio/penv/bin:/opt/esp/python_env/idf6.1_py3.12_env/bin:/opt/esp/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/sbin:/bin:",
+    "PYTHONPATH": "/opt/esp/python_env/idf5.5_py3.12_env/lib/python3.12/site-packages:/opt/esp/idf/components/esptool_py:/opt/esp/idf/components/partition_table:/opt/esp/idf/components/app_update:/opt/esp/idf/components/idf_component_manager",
+    "PATH": "/root/.platformio/penv/bin:/opt/esp/python_env/idf5.5_py3.12_env/bin:/opt/esp/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/sbin:/bin:",
     "IDF_PATH": "/opt/esp/idf"
   },
   "customizations": {

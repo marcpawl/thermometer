@@ -73,12 +73,6 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
         case HTTP_EVENT_REDIRECT:
             ESP_LOGD(TAG, "HTTP_EVENT_REDIRECT");
             break;
-       case HTTP_EVENT_ON_STATUS_CODE:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_STATUS_CODE");
-            break;
-        case HTTP_EVENT_ON_HEADERS_COMPLETE:
-            ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADERS_COMPLETE");
-            break;
     }
     return ESP_OK;
 }
@@ -136,14 +130,52 @@ void simple_ota_example_task(void *pvParameter) {
     esp_https_ota_config_t ota_config = {
         .http_config = &config,
     };
-    ESP_LOGI(TAG, "Attempting to download update from %s", config.url);
-    esp_err_t ret = esp_https_ota(&ota_config);
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "OTA Succeed, Rebooting...");
-        esp_restart();
-    } else {
-        ESP_LOGE(TAG, "Firmware upgrade failed");
+    esp_https_ota_handle_t ota_handle = NULL;
+
+    // 1. Connect and start the OTA session
+    esp_err_t err = esp_https_ota_begin(&ota_config, &ota_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "ESP HTTPS OTA Begin failed: %s", esp_err_to_name(err));
+        return;
     }
+
+    // 2. Extract the new app's header information from the stream
+    esp_app_desc_t app_desc;
+    err = esp_https_ota_get_img_desc(ota_handle, &app_desc);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get image description: %s", esp_err_to_name(err));
+        esp_https_ota_abort(ota_handle);
+        return;
+    }
+
+    // 3. Compare with currently running version
+    const esp_app_desc_t *running_desc = esp_app_get_description();
+
+    if (strcmp(app_desc.version, running_desc->version) == 0) {
+        ESP_LOGW(TAG, "Versions are identical (%s). Stopping OTA.", app_desc.version);
+        esp_https_ota_abort(ota_handle);
+        return;
+    }
+
+    // 4. Versions are different -> Proceed with download
+    ESP_LOGI(TAG, "Running version %s", app_desc.version);
+    ESP_LOGI(TAG, "New version found: %s. Downloading...", app_desc.version);
+    while (1) {
+        err = esp_https_ota_perform(ota_handle);
+        if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
+            break;
+        } else {
+            ESP_LOGD(TAG, "%04x %s", err, esp_err_to_name(err));
+        }
+    }
+
+    // 5. Cleanup and Reboot
+    err = esp_https_ota_finish(ota_handle);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "OTA upgrade completed. Rebooting ...");
+        esp_restart();
+    }
+    ESP_LOGW(TAG, "OTA upgrade failed. %04X %s", err, esp_err_to_name(err) );
     while (1) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
@@ -177,10 +209,9 @@ static void get_sha256_of_partitions(void) {
 void check_version() {
     const esp_app_desc_t *app_desc = esp_app_get_description();
 
-    // This prints the version stored in the binary header
     ESP_LOGI(TAG, "Running Version: %s\n", app_desc->version);
-
-    // It also stores the compile time and date!
+    ESP_LOGI(TAG, "Secure version: %u\n", app_desc->secure_version);
+    ESP_LOGI(TAG, "project name: %s\n", app_desc->project_name);
     ESP_LOGI(TAG, "Compile Time: %s %s\n", app_desc->date, app_desc->time);
 }
 
