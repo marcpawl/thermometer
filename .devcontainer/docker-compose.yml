@@ -9,5 +9,4 @@ services:
     stdin_open: true
     # restart: always
     volumes:
-      - ..:/workspaces:cached
       - "/dev/ttyUSB0:/dev/ttyUSB0" # Map the ESP32 port

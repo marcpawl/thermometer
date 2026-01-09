@@ -25,5 +25,8 @@ COPY idf_cmake.sh /opt/esp/idf_cmake.sh
 RUN chmod +x /opt/esp/idf_cmake.sh
 RUN echo ". /opt/esp/idf/export.sh" >> /root/.bashrc
 
+RUN mkdir /workspaces
+RUN git clone https://github.com/marcpawl/thermometer.git /workspaces
+
 WORKDIR /workspaces
 
