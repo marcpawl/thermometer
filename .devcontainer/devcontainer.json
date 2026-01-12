@@ -1,6 +1,5 @@
 {
   "name": "ESP32 Docker Compose Env",
-  "initializeCommand": "python ../../esp32_attach.py",
   "dockerComposeFile": "docker-compose.yml",
   "service": "esp32-dev",
   "workspaceFolder": "/workspaces",

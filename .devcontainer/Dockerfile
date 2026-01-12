@@ -25,8 +25,14 @@ COPY idf_cmake.sh /opt/esp/idf_cmake.sh
 RUN chmod +x /opt/esp/idf_cmake.sh
 RUN echo ". /opt/esp/idf/export.sh" >> /root/.bashrc
 
-RUN mkdir /workspaces
-RUN git clone https://github.com/marcpawl/thermometer.git /workspaces
+COPY clion.2025.1.7.tar.gz /tmp/clion.tar.gz
+RUN mkdir -p /root/.cache/JetBrains/RemoteDev/dist
+RUN tar -C /root/.cache/JetBrains/RemoteDev/dist -xzf /tmp/clion.tar.gz
+RUN rm /tmp/clion.tar.gz
+ENV PATH=${PATH}:/root/.cache/JetBrains/RemoteDev/dist/clion-2025.1.7/bin
+
+#RUN git clone https://github.com/marcpawl/thermometer.git /workspaces
 
 WORKDIR /workspaces
 
+CMD sleep 360000
