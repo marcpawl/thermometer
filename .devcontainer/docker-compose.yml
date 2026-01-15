@@ -3,10 +3,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: idf
+    ports:
+      - "2222:22"
     # Grant hardware access
     privileged: true
     tty: true
     stdin_open: true
     # restart: always
-    volumes:
+    devices:
       - "/dev/ttyUSB0:/dev/ttyUSB0" # Map the ESP32 port
+    volumes:
+      - ../..:/workspaces:rw
+      - /home/marcpawl/.ssh/id_rsa.pub:/root/.ssh/authorized_keys
+
