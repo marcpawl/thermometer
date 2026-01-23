@@ -77,8 +77,7 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
-void simple_ota_example_task(void *pvParameter) {
-    ESP_LOGI(TAG, "Starting OTA example task");
+static void do_ota(void *pvParameter) {
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
     esp_netif_t *netif = get_example_netif_from_desc(bind_interface_name);
     if (netif == NULL) {
@@ -176,9 +175,14 @@ void simple_ota_example_task(void *pvParameter) {
         esp_restart();
     }
     ESP_LOGW(TAG, "OTA upgrade failed. %04X %s", err, esp_err_to_name(err) );
-    while (1) {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
+}
+
+void simple_ota_example_task(void *pvParameter)
+{
+    ESP_LOGI(TAG, "Starting OTA task");
+    do_ota(pvParameter);
+    ESP_LOGI(TAG, "Ending OTA task");
+    vTaskDelete(NULL);
 }
 
 static void print_sha256(const uint8_t *image_hash, const char *label) {
