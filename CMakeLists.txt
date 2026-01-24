@@ -9,6 +9,7 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 idf_build_set_property(MINIMAL_BUILD ON)
 project(thermometer)
 
+
 set(DESTINATION_PATH "${project_dir}/releases")
 
 file(MAKE_DIRECTORY ${DESTINATION_PATH})
