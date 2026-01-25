@@ -24,6 +24,7 @@ extern "C" {
 }
 
 extern void ota_task(void *pvParameter);
+extern void sensor_task(void *pvParameter);
 
 static const char* TAG = "main";
 static const int HASH_LEN = 32;
@@ -98,4 +99,5 @@ extern "C" void app_main(void) {
 #endif // CONFIG_EXAMPLE_CONNECT_WIFI
 
     xTaskCreate(&ota_task, "ota_task", 8192, NULL, 5, NULL);
+    xTaskCreate(&sensor_task, "sensor_task", 8192, NULL, 5, NULL);
 }
