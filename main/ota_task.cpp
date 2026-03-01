@@ -32,6 +32,8 @@ extern "C" {
 #endif
 }
 
+#include "ota_task.hpp"
+
 
 
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF

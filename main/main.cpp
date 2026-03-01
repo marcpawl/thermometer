@@ -23,7 +23,8 @@ extern "C" {
 #endif
 }
 
-extern void ota_task(void *pvParameter);
+#include "ota_task.hpp"
+
 extern void sensor_task(void *pvParameter);
 
 static const char* TAG = "main";
