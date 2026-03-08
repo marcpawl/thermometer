@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <type_traits>
 
 
@@ -27,6 +28,8 @@ protected:
 protected:
     template <typename Data>
     void write(Data const& newData, std::function<void(Data const&)> setter ) {
+        // Writer: Increments to odd, writes, increments to even
+
         uint32_t seq = _seq.load(std::memory_order_relaxed);
         _seq.store(seq + 1, std::memory_order_release); // Start to write (now odd)
 
@@ -37,34 +40,46 @@ protected:
         _seq.store(seq + 2, std::memory_order_release); // End write (now even)
     }
 
+    std::optional<T> try_read() const
+    {
+        T temp;
+
+        uint32_t seq1 = _seq.load(std::memory_order_acquire);
+        // If seq is odd, a writer is currently active. Wait/Yield.
+        if (seq1 & 1) {
+            return std::nullopt;
+        }
+
+        temp = _data;
+
+        std::atomic_signal_fence(std::memory_order_acquire);
+
+        uint32_t seq2 = _seq.load(std::memory_order_acquire);
+        if (seq1 != seq2) {
+            // A writer updated the data while we re trying to read.
+            return std::nullopt;
+        }
+        return _data;
+    }
+
 public:
-    // Writer: Increments to odd, writes, increments to even
     void write(const T& newData) {
         auto setData = [&](T& newValue)->void { newValue = newData; };
         write( newData, setData );
     }
 
-    // Reader: Loops until a clean "snapshot" is taken
+    /**
+     * @returns a copy of the data.
+     */
     T read() const {
-        T temp;
-        uint32_t seq1, seq2;
-
-        do {
-            seq1 = _seq.load(std::memory_order_acquire);
-            
-            // If seq is odd, a writer is currently active. Wait/Yield.
-            if (seq1 & 1) {
-                continue; 
+        // Reader: Loops until a clean "snapshot" is taken
+        while (true)
+        {
+            std::optional<T> temp = try_read();
+            if (temp.has_value()) {
+                return temp.value();
             }
-
-            temp = _data;
-            
-            std::atomic_signal_fence(std::memory_order_acquire);
-            seq2 = _seq.load(std::memory_order_acquire);
-            
-        } while (seq1 != seq2);
-
-        return temp;
+        }
     }
 };
 
