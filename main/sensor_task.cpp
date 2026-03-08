@@ -93,15 +93,13 @@ void SensorTask::sensor_task_main(void* pvParameters)
             ESP_LOGW(TAG, "no update request received");
         } else {
             SensorReadings readings = sensor_task->read_sensors();
-            for (auto const& reading : readings)
-            {
-                ESP_LOGI(TAG, "temperature read from %" PRIX64 ": %.2fC", reading.address, reading.temperature);
-            }
+            sensor_task->_model.write(readings);
         }
     }
 }
 
-SensorTask::SensorTask()
+SensorTask::SensorTask(Model& model)
+    :_model(model)
 {
     update_queue = xQueueCreate(10, sizeof(std::byte));;
 
@@ -135,10 +133,10 @@ void SensorTask::update()
     xQueueSend(update_queue, &update_request, portMAX_DELAY);
 }
 
-std::unique_ptr<SensorTask> SensorTask::start()
+std::unique_ptr<SensorTask> SensorTask::start(Model& model)
 {
     // Lifetime is managed by the task, it is supposed to look like it is leaking.
-    auto sensor_task = std::make_unique<SensorTask>();
+    auto sensor_task = std::make_unique<SensorTask>(model);
     xTaskCreate(&sensor_task_main, "sensor_task", 8192, sensor_task.get(), 5, nullptr);
     return sensor_task;
 }

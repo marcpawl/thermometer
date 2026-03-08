@@ -11,6 +11,7 @@ extern "C" {
 }
 
 #include "marcpawl_inplace_vector.hpp"
+#include "model.hpp"
 #include "sensor_readings.hpp"
 
 static constexpr auto sensor_bus_gpio = 4;
@@ -32,8 +33,15 @@ using SensorReadings = marcpawl::inplace_vector<SensorReading, max_sensors>;
 class SensorTask
 {
 public:
-    static std::unique_ptr<SensorTask> start();
-    SensorTask();
+    /**
+     * @param model Model to update when there are new sensor readings.
+     */
+    static std::unique_ptr<SensorTask> start(Model& model);
+
+    /**
+     * @param model Model to update when there are new sensor readings.
+     */
+    SensorTask(Model& model);
     ~SensorTask();
 
 private:
@@ -56,6 +64,9 @@ private:
 
     /** Queue to read requests from. */
     QueueHandle_t update_queue;
+
+    /** Model to update when there are new sensor readings. */
+    Model& _model;
 };
 
 #endif //DEVCONTAINER_JSON_SENSOR_TASK_HPP

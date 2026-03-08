@@ -23,6 +23,7 @@ extern "C" {
 #endif
 }
 
+#include "model.hpp"
 #include "ota_task.hpp"
 #include "sensor_task.hpp"
 
@@ -65,6 +66,7 @@ static void get_sha256_of_partitions(void) {
     print_sha256(sha_256, "SHA-256 for current firmware: ");
 }
 
+static Model model;
 static std::unique_ptr<SensorTask> sensor_task;
 
 extern "C" void app_main(void) {
@@ -101,10 +103,11 @@ extern "C" void app_main(void) {
     esp_wifi_set_ps(WIFI_PS_NONE);
 #endif // CONFIG_EXAMPLE_CONNECT_WIFI
 
+
     xTaskCreate(&ota_task, "ota_task", 8192, nullptr, 5, nullptr);
 
     // Create a new sensor task, lifetime is managed by the task itself.
-    sensor_task = SensorTask::start();
+    sensor_task = SensorTask::start(model);
     while (true)
     {
         sensor_task->update();
