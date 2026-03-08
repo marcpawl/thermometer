@@ -11,9 +11,9 @@ extern "C" {
 }
 
 #include "marcpawl_inplace_vector.hpp"
+#include "sensor_readings.hpp"
 
 static constexpr auto sensor_bus_gpio = 4;
-static constexpr auto max_sensors = 2;
 
 /** Sensor readings of this value or larger are invalid. */
 constexpr float max_temperature = 85.0;
@@ -26,13 +26,8 @@ struct Sensor
 
 using Sensors = marcpawl::inplace_vector<Sensor, max_sensors>;
 
-struct SesnorReading
-{
-    float temperature;
-    onewire_device_address_t address;
-};
 
-using SensorReadings = marcpawl::inplace_vector<SesnorReading, max_sensors>;
+using SensorReadings = marcpawl::inplace_vector<SensorReading, max_sensors>;
 
 class SensorTask
 {
