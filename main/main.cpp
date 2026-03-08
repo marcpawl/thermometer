@@ -24,8 +24,8 @@ extern "C" {
 }
 
 #include "ota_task.hpp"
+#include "sensor_task.hpp"
 
-extern void sensor_task(void *pvParameter);
 
 static const char* TAG = "main";
 static const int HASH_LEN = 32;
@@ -65,6 +65,8 @@ static void get_sha256_of_partitions(void) {
     print_sha256(sha_256, "SHA-256 for current firmware: ");
 }
 
+static std::unique_ptr<SensorTask> sensor_task;
+
 extern "C" void app_main(void) {
     ESP_LOGI(TAG, "OTA example app_main start");
     check_version();
@@ -99,6 +101,13 @@ extern "C" void app_main(void) {
     esp_wifi_set_ps(WIFI_PS_NONE);
 #endif // CONFIG_EXAMPLE_CONNECT_WIFI
 
-    xTaskCreate(&ota_task, "ota_task", 8192, NULL, 5, NULL);
-    xTaskCreate(&sensor_task, "sensor_task", 8192, NULL, 5, NULL);
+    xTaskCreate(&ota_task, "ota_task", 8192, nullptr, 5, nullptr);
+
+    // Create a new sensor task, lifetime is managed by the task itself.
+    sensor_task = SensorTask::start();
+    while (true)
+    {
+        sensor_task->update();
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+    }
 }

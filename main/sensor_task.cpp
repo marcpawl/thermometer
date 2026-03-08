@@ -13,31 +13,12 @@ extern "C" {
 #include "ds18b20.h"
 #include "onewire_bus.h"
 }
+
 #include "marcpawl_inplace_vector.hpp"
+#include "sensor_task.hpp"
 
-static const char *TAG = "sensor_task";
+static const char* TAG = "sensor_task";
 
-static constexpr auto sensor_bus_gpio  =  4;
-static constexpr auto max_sensors = 2;
-
-/** Sensor readings of this value or larger are invalid. */
-constexpr float max_temperature = 85.0;
-
-struct Sensor
-{
-    ds18b20_device_handle_t handle;
-    onewire_device_address_t address;
-};
-
-using Sensors = marcpawl::inplace_vector<Sensor, max_sensors >;
-
-struct SesnorReading
-{
-    float temperature;
-    onewire_device_address_t address;
-};
-
-using SensorReadings = marcpawl::inplace_vector<SesnorReading, max_sensors>;
 
 static Sensors discover_sensors(onewire_bus_handle_t bus)
 {
@@ -49,24 +30,32 @@ static Sensors discover_sensors(onewire_bus_handle_t bus)
     // create a 1-wire device iterator, which is used for device search
     ESP_ERROR_CHECK(onewire_new_device_iter(bus, &iter));
     ESP_LOGI(TAG, "Device iterator created, start searching...");
-    do {
+    do
+    {
         search_result = onewire_device_iter_get_next(iter, &next_onewire_device);
-        if (search_result == ESP_OK) { // found a new device, let's check if we can upgrade it to a DS18B20
+        if (search_result == ESP_OK)
+        {
+            // found a new device, let's check if we can upgrade it to a DS18B20
             ds18b20_config_t ds_cfg = {};
             ds18b20_device_handle_t handle;
-            if (ds18b20_new_device(&next_onewire_device, &ds_cfg, &handle) == ESP_OK) {
+            if (ds18b20_new_device(&next_onewire_device, &ds_cfg, &handle) == ESP_OK)
+            {
                 ESP_LOGI(TAG, "Found a DS18B20 address: %" PRIX64 " %p", next_onewire_device.address, handle);
                 ds18b20s.emplace_back(handle, next_onewire_device.address);
-            } else {
+            }
+            else
+            {
                 ESP_LOGI(TAG, "Found an unknown device, address: %" PRIX64, next_onewire_device.address);
             }
         }
-    } while (search_result != ESP_ERR_NOT_FOUND);
+    }
+    while (search_result != ESP_ERR_NOT_FOUND);
     ESP_ERROR_CHECK(onewire_del_device_iter(iter));
     ESP_LOGI(TAG, "Searching done, %d DS18B20 device(s) found", ds18b20s.size());
 
     // set resolution for all DS18B20s
-    for (auto const& sensor : ds18b20s) {
+    for (auto const& sensor : ds18b20s)
+    {
         // set resolution
         ESP_ERROR_CHECK(ds18b20_set_resolution(sensor.handle, DS18B20_RESOLUTION_12B));
     }
@@ -74,16 +63,17 @@ static Sensors discover_sensors(onewire_bus_handle_t bus)
     return ds18b20s;
 }
 
-SensorReadings read_sensors(Sensors const& sensors)
+SensorReadings SensorTask::read_sensors()
 {
-    for (auto const& sensor : sensors)
+    for (auto const& sensor : ds18b20s)
     {
         ESP_ERROR_CHECK(ds18b20_trigger_temperature_conversion(sensor.handle));
     }
     vTaskDelay(pdMS_TO_TICKS(750));
 
     SensorReadings readings;
-    for (auto const& sensor : sensors) {
+    for (auto const& sensor : ds18b20s)
+    {
         float temperature;
         ESP_ERROR_CHECK(ds18b20_get_temperature(sensor.handle, &temperature));
         readings.emplace_back(temperature, sensor.address);
@@ -91,8 +81,30 @@ SensorReadings read_sensors(Sensors const& sensors)
     return readings;
 }
 
-void sensor_task(void *pvParameters)
+void SensorTask::sensor_task_main(void* pvParameters)
 {
+    SensorTask* sensor_task = static_cast<SensorTask*>(pvParameters);
+    while (true)
+    {
+        std::byte update_request;
+        auto request_wanted = xQueueReceive(sensor_task->update_queue, &update_request, portMAX_DELAY);
+        if (pdTRUE != request_wanted)
+        {
+            ESP_LOGW(TAG, "no update request received");
+        } else {
+            SensorReadings readings = sensor_task->read_sensors();
+            for (auto const& reading : readings)
+            {
+                ESP_LOGI(TAG, "temperature read from %" PRIX64 ": %.2fC", reading.address, reading.temperature);
+            }
+        }
+    }
+}
+
+SensorTask::SensorTask()
+{
+    update_queue = xQueueCreate(10, sizeof(std::byte));;
+
     // install a new 1-wire bus
     onewire_bus_handle_t bus;
     onewire_bus_config_t bus_config = {
@@ -107,14 +119,26 @@ void sensor_task(void *pvParameters)
     ESP_ERROR_CHECK(onewire_new_bus_rmt(&bus_config, &rmt_config, &bus));
     ESP_LOGI(TAG, "1-Wire bus installed on GPIO%d", sensor_bus_gpio);
 
-    Sensors ds18b20s = discover_sensors(bus);
+    ds18b20s = discover_sensors(bus);
+}
 
-    while (true) {
-        SensorReadings readings = read_sensors(ds18b20s);
-        for (auto const& reading : readings)
-        {
-            ESP_LOGI(TAG, "temperature read from %" PRIX64 ": %.2fC", reading.address, reading.temperature);
-        }
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
+SensorTask::~SensorTask()
+{
+    ESP_LOGE(TAG, "task should never terminated");
+    std::terminate();
+}
+
+void SensorTask::update()
+{
+    // Any value is used to indicate we want an update;
+    std::byte update_request{1};
+    xQueueSend(update_queue, &update_request, portMAX_DELAY);
+}
+
+std::unique_ptr<SensorTask> SensorTask::start()
+{
+    // Lifetime is managed by the task, it is supposed to look like it is leaking.
+    auto sensor_task = std::make_unique<SensorTask>();
+    xTaskCreate(&sensor_task_main, "sensor_task", 8192, sensor_task.get(), 5, nullptr);
+    return sensor_task;
 }
