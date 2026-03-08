@@ -135,7 +135,6 @@ void SensorTask::update()
 
 std::unique_ptr<SensorTask> SensorTask::start(Model& model)
 {
-    // Lifetime is managed by the task, it is supposed to look like it is leaking.
     auto sensor_task = std::make_unique<SensorTask>(model);
     xTaskCreate(&sensor_task_main, "sensor_task", 8192, sensor_task.get(), 5, nullptr);
     return sensor_task;

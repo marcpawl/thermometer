@@ -9,6 +9,14 @@ extern "C" {
 
 constexpr auto TAG = "model";
 
+void ModelData::dump(const char* tag) const
+{
+    for (auto const& reading : sensor_readings)
+    {
+        ESP_LOGI(tag, "temperature %" PRIX64 ": %.2fC", reading.address, reading.temperature);
+    }
+}
+
 void Model::write(const SensorReadings& new_readings)
 {
     SensorReadings* destination = &this->_data.sensor_readings;
@@ -17,13 +25,6 @@ void Model::write(const SensorReadings& new_readings)
         *destination = readings;
     };
     SequenceLock<ModelData>::write<SensorReadings>(new_readings, setter);
-    dump();
-}
-
-void Model::dump() const
-{
-    for (auto const& reading : _data.sensor_readings)
-    {
-        ESP_LOGI(TAG, "temperature %" PRIX64 ": %.2fC", reading.address, reading.temperature);
-    }
+    ESP_LOGI(TAG, "model updated sensor readings");
+    _data.dump(TAG);
 }

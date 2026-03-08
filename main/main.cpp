@@ -25,6 +25,7 @@ extern "C" {
 
 #include "model.hpp"
 #include "ota_task.hpp"
+#include "poster_task.hpp"
 #include "sensor_task.hpp"
 
 
@@ -67,6 +68,7 @@ static void get_sha256_of_partitions(void) {
 }
 
 static Model model;
+static std::unique_ptr<PosterTask> poster_task;
 static std::unique_ptr<SensorTask> sensor_task;
 
 extern "C" void app_main(void) {
@@ -106,8 +108,11 @@ extern "C" void app_main(void) {
 
     xTaskCreate(&ota_task, "ota_task", 8192, nullptr, 5, nullptr);
 
-    // Create a new sensor task, lifetime is managed by the task itself.
     sensor_task = SensorTask::start(model);
+    poster_task = PosterTask::start(model);
+
+
+
     while (true)
     {
         sensor_task->update();

@@ -9,6 +9,11 @@
 struct ModelData
 {
     SensorReadings sensor_readings;
+
+    /** Write the contents to the log.
+     *  @param tag Log to write to.
+     */
+    void dump(char const * tag) const;
 };
 
 class Model : public SequenceLock<ModelData>
@@ -22,8 +27,6 @@ public:
      */
     void write(const SensorReadings& new_readings);
 
-    /** Write the contents to the log. */
-    void dump() const;
 };
 
 #endif //DEVCONTAINER_JSON_MODEL_HPP
