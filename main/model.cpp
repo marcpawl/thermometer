@@ -11,7 +11,12 @@ constexpr auto TAG = "model";
 
 void ModelData::dump(const char* tag) const
 {
-    for (auto const& reading : sensor_readings)
+    // Extract duration since epoch (boot)
+    auto duration = sensor_readings._timestamp.time_since_epoch();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+    ESP_LOGI(tag, "Time point: %lld ms", (long long)ms.count());
+
+    for (auto const& reading : sensor_readings._readings)
     {
         ESP_LOGI(tag, "temperature %" PRIX64 ": %.2fC", reading.address, reading.temperature);
     }

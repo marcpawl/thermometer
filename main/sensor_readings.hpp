@@ -12,6 +12,7 @@ extern "C" {
 #include "onewire_bus.h"
 }
 #include "marcpawl_inplace_vector.hpp"
+#include "rtc_clock.hpp"
 
 static constexpr auto max_sensors = 2;
 
@@ -22,7 +23,13 @@ struct SensorReading
 };
 static_assert(std::is_trivial_v<SensorReading>);
 
-using SensorReadings = marcpawl::inplace_vector<SensorReading, max_sensors>;
+struct SensorReadings
+{
+    using readings_t = marcpawl::inplace_vector<SensorReading, max_sensors>;
+    readings_t _readings;
+    rtc_clock::time_point _timestamp;
+};
+
 static_assert(std::is_trivially_copyable_v<SensorReadings>);
 
 #endif //DEVCONTAINER_JSON_SENSOR_READINGS_HPPstruct SesnorReading

@@ -15,6 +15,7 @@ extern "C" {
 }
 
 #include "marcpawl_inplace_vector.hpp"
+#include "rtc_clock.hpp"
 #include "sensor_task.hpp"
 
 static const char* TAG = "sensor_task";
@@ -72,11 +73,12 @@ SensorReadings SensorTask::read_sensors()
     vTaskDelay(pdMS_TO_TICKS(750));
 
     SensorReadings readings;
+    readings._timestamp = rtc_clock::now();
     for (auto const& sensor : ds18b20s)
     {
         float temperature;
         ESP_ERROR_CHECK(ds18b20_get_temperature(sensor.handle, &temperature));
-        readings.emplace_back(temperature, sensor.address);
+        readings._readings.emplace_back(temperature, sensor.address);
     }
     return readings;
 }

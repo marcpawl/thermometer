@@ -27,9 +27,6 @@ struct Sensor
 
 using Sensors = marcpawl::inplace_vector<Sensor, max_sensors>;
 
-
-using SensorReadings = marcpawl::inplace_vector<SensorReading, max_sensors>;
-
 class SensorTask
 {
 public:

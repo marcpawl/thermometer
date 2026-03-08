@@ -2,6 +2,7 @@
 idf_build_get_property(project_dir PROJECT_DIR)
 idf_component_register(
 		SRCS
+			"rtc_clock.cpp"
 		    "sensor_task.cpp" "poster_task.cpp" "ota_task.cpp"
 		    "model.cpp" "main.cpp"
 		INCLUDE_DIRS "."
