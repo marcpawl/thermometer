@@ -32,4 +32,11 @@ void Model::write(const SensorReadings& new_readings)
     SequenceLock<ModelData>::write<SensorReadings>(new_readings, setter);
     ESP_LOGI(TAG, "model updated sensor readings");
     _data.dump(TAG);
+
+    _publisher.publish('1');
+}
+
+Model::ModelSubscriber Model::subscribe()
+{
+    return _publisher.subscribe();
 }

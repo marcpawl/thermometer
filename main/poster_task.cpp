@@ -3,6 +3,7 @@ extern "C" {
 #include "esp_log.h"
 }
 #include "poster_task.hpp"
+#include "rtc_clock.hpp"
 
 constexpr auto TAG = "poster_task";
 
@@ -26,11 +27,21 @@ std::unique_ptr<PosterTask> PosterTask::start(Model& model)
 void PosterTask::poster_task_main(void* pvParameters)
 {
     PosterTask* poster_task = static_cast<PosterTask*>(pvParameters);
+    auto model_subscriber = poster_task->_model.subscribe();
+    auto next_update = rtc_clock::now() + std::chrono::seconds(10);
     while (true)
     {
+        model_subscriber.wait();
+
         const ModelData model_data = poster_task->_model.read();
-        ESP_LOGI(TAG, "dumping model data");
-        model_data.dump(TAG);
-        vTaskDelay(10000*3 / portTICK_PERIOD_MS);
+        if (model_data.sensor_readings._timestamp < next_update)
+        {
+            ESP_LOGI(TAG, "Update is too recent. skipping");
+        } else
+        {
+            ESP_LOGI(TAG, "dumping model data");
+            model_data.dump(TAG);
+            next_update = rtc_clock::now() + std::chrono::seconds(10);
+        }
     }
 }

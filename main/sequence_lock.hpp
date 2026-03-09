@@ -63,11 +63,6 @@ protected:
     }
 
 public:
-    void write(const T& newData) {
-        auto setData = [&](T& newValue)->void { newValue = newData; };
-        write( newData, setData );
-    }
-
     /**
      * @returns a copy of the data.
      */
