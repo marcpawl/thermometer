@@ -11,6 +11,7 @@ extern "C" {
 
 #include <vector>
 #include <algorithm>
+#include <memory>
 #include <mutex>
 #include <optional>
 
@@ -28,11 +29,13 @@ public:
     using subscriber_t = Subscriber< publisher_t >;
     friend class Subscriber<Publisher<QueueDepth, T>>;
 
-
+    using shared_ptr_t = std::shared_ptr<Publisher>;
+    using weak_ptr_t = std::weak_ptr<Publisher>;
 private:
     static constexpr const char* TAG = "Publisher";
     std::vector<QueueHandle_t> _queues;
     std::mutex _mutex;
+    shared_ptr_t _myself;
 
     void unsubscribe(QueueHandle_t q) {
         std::lock_guard<std::mutex> lock(_mutex);
@@ -44,7 +47,9 @@ private:
     }
 
 public:
-    Publisher() = default;
+    Publisher()
+        : _myself(this, [](auto){})
+    {}
 
     // Delete copy/move to ensure identity
     Publisher(const Publisher&) = delete;
@@ -70,15 +75,19 @@ class Subscriber {
     friend PublisherType;
 
 private:
-    PublisherType& _parent;
+    typename PublisherType::weak_ptr_t _parent;
     QueueHandle_t _queue;
 
-    Subscriber(PublisherType& parent, QueueHandle_t q) : _parent(parent), _queue(q) {}
+    Subscriber(typename PublisherType::shared_ptr_t parent, QueueHandle_t q) : _parent(parent), _queue(q) {}
 
 public:
     ~Subscriber() {
         if (_queue != nullptr) {
-            _parent.unsubscribe(_queue);
+            typename PublisherType::shared_ptr_t shared_publisher = _parent.lock();
+            if (shared_publisher != nullptr)
+            {
+                shared_publisher->unsubscribe(_queue);
+            }
         }
     }
 
@@ -108,7 +117,7 @@ typename Publisher<QueueDepth, T>::subscriber_t Publisher<QueueDepth, T>::subscr
         std::lock_guard<std::mutex> lock(_mutex);
         _queues.push_back(q);
     }
-    return subscriber_t(*this, q);
+    return subscriber_t(_myself, q);
 }
 
 template <size_t QueueDepth, typename T>
