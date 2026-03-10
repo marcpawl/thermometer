@@ -24,6 +24,32 @@ std::unique_ptr<PosterTask> PosterTask::start(Model& model)
     return poster_task;
 }
 
+// TODO stop using dynamic memory
+static std::string to_json(SensorReadings const& readings)
+{
+    std::stringstream json;
+    json << "{";
+    json << "\"sensor_readings\": ";
+    json << "[";
+    bool first = true;
+    for (auto const& reading : readings._readings)
+    {
+        if (! first)
+        {
+            json << ", ";
+        }
+        json << "{";
+        json << "\"temperature\": " << reading.temperature << ",";
+        json << "\"address\": \"" << std::hex <<  reading.address << std::dec << "\"";
+        json << "}";
+        first = false;
+    }
+    json << "]";
+    json << "}";
+
+    return json.str();
+}
+
 void PosterTask::poster_task_main(void* pvParameters)
 {
     PosterTask* poster_task = static_cast<PosterTask*>(pvParameters);
@@ -32,15 +58,19 @@ void PosterTask::poster_task_main(void* pvParameters)
     while (true)
     {
         model_subscriber.wait();
+        auto now = rtc_clock::now();
 
         const ModelData model_data = poster_task->_model.read();
         if (model_data.sensor_readings._timestamp < next_update)
         {
-            ESP_LOGI(TAG, "Update is too recent. skipping");
-        } else
+            ESP_LOGI(TAG, "Throttling update. skipping");
+        } else if (model_data.sensor_readings._timestamp < (now - std::chrono::minutes(1))) {
+            ESP_LOGI(TAG, "Readings are too old. skipping");
+        }
+        else
         {
-            ESP_LOGI(TAG, "dumping model data");
-            model_data.dump(TAG);
+            std::string json_data = to_json(model_data.sensor_readings);
+            ESP_LOGI(TAG, "Posting data: %s", json_data.c_str());
             next_update = rtc_clock::now() + std::chrono::seconds(10);
         }
     }
