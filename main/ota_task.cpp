@@ -133,7 +133,7 @@ static bool is_newer_version(char* p_app_version, const char* p_running_version)
         ESP_LOGI(TAG, "Newer version found: %s", p_app_version);
         return true;
     }
-    ESP_LOGI(TAG, "Distributed version is not newer %s than running %s", p_running_version, p_app_version);
+    ESP_LOGI(TAG, "Distributed version %s is not newer than running %s", p_app_version, p_running_version);
     return false;
 }
 
