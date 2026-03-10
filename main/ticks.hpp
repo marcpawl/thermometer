@@ -10,7 +10,7 @@
 #include <chrono>
 #include "freertos/FreeRTOS.h"
 
-inline TickType_t to_ticks(std::chrono::milliseconds ms) {
+inline constexpr TickType_t to_ticks(std::chrono::milliseconds ms) noexcept {
     if (ms == std::chrono::milliseconds::max()) {
         return portMAX_DELAY;
     }

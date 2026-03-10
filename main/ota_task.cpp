@@ -7,6 +7,10 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 
+#include <optional>
+#include <string_view>
+#include <charconv>
+
 extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -33,7 +37,7 @@ extern "C" {
 }
 
 #include "ota_task.hpp"
-
+#include "ticks.hpp"
 
 
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
@@ -45,11 +49,94 @@ static const char *bind_interface_name = EXAMPLE_NETIF_DESC_STA;
 #endif
 #endif
 
-static const char *TAG = "simple_ota_example";
+static const char *TAG = "ota_task";
 extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
 extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 
 #define OTA_URL_SIZE 256
+
+
+struct Version {
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+
+    bool operator>(const Version& other) const {
+        if (major != other.major) return major > other.major;
+        if (minor != other.minor) return minor > other.minor;
+        return patch > other.patch;
+    }
+
+    // Usually you'd also want == for completeness
+    bool operator==(const Version& other) const {
+        return major == other.major &&
+               minor == other.minor &&
+               patch == other.patch;
+    }
+};
+
+
+/**
+ * Parses a dotted string (e.g., " 10.11.4") into a Version struct.
+ * Handles leading spaces and assumes three components.
+ */
+std::optional<Version> parse_version(std::string_view sv) {
+    Version v;
+
+    // 1. Trim leading whitespace
+    auto start = sv.find_first_not_of(" ");
+    if (start == std::string_view::npos) return std::nullopt;
+    sv.remove_prefix(start);
+
+    auto parse_next = [&](int& value) -> bool {
+        if (sv.empty()) return false;
+
+        // from_chars expects a pointer range [data, data + size]
+        auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), value);
+
+        if (ec != std::errc{}) return false;
+
+        // Move the view past the parsed number
+        size_t parsed_len = ptr - sv.data();
+        sv.remove_prefix(parsed_len);
+
+        // Remove the dot if it exists
+        if (!sv.empty() && sv.front() == '.') {
+            sv.remove_prefix(1);
+        }
+        return true;
+    };
+
+    if (parse_next(v.major) && parse_next(v.minor) && parse_next(v.patch)) {
+        return v;
+    }
+
+    return std::nullopt;
+}
+
+static bool is_newer_version(char* p_app_version, const char* p_running_version)
+{
+    auto app_version_opt = parse_version(p_app_version);;
+    if (! app_version_opt.has_value())
+    {
+        ESP_LOGW(TAG, "Failed to parse app version: %s", p_app_version);
+        return false;
+    }
+    auto running_version_opt = parse_version(p_running_version);
+    if (! running_version_opt.has_value())
+    {
+        ESP_LOGW(TAG, "Failed to parse running version: %s", p_running_version);
+        return false;
+    }
+    if ( app_version_opt.value() > running_version_opt.value() )
+    {
+        ESP_LOGI(TAG, "Newer version found: %s", p_app_version);
+        return true;
+    }
+    ESP_LOGI(TAG, "Distributed version is not newer %s than running %s", p_running_version, p_app_version);
+    return false;
+}
+
 
 esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
     switch (evt->event_id) {
@@ -191,14 +278,14 @@ static void do_ota(void *pvParameter) {
     // 3. Compare with currently running version
     const esp_app_desc_t *running_desc = esp_app_get_description();
 
-    if (strcmp(app_desc.version, running_desc->version) == 0) {
-        ESP_LOGW(TAG, "Versions are identical (%s). Stopping OTA.", app_desc.version);
+    if (! is_newer_version(app_desc.version, running_desc->version))
+    {
         esp_https_ota_abort(ota_handle);
         return;
     }
 
+
     // 4. Versions are different -> Proceed with download
-    ESP_LOGI(TAG, "Running version %s", app_desc.version);
     ESP_LOGI(TAG, "New version found: %s. Downloading...", app_desc.version);
     while (1) {
         err = esp_https_ota_perform(ota_handle);
@@ -220,10 +307,11 @@ static void do_ota(void *pvParameter) {
 
 void ota_task(void *pvParameter)
 {
-    ESP_LOGI(TAG, "Starting OTA task");
-    do_ota(pvParameter);
-    ESP_LOGI(TAG, "Ending OTA task");
-    vTaskDelete(NULL);
+    while (true)
+    {
+        do_ota(pvParameter);
+        vTaskDelay(to_ticks(std::chrono::days(1)));
+    }
 }
 
 
