@@ -22,3 +22,46 @@ add_custom_command(TARGET app POST_BUILD
 )
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# -----------------------------------------------------------------------------
+# Host Unit Tests
+# -----------------------------------------------------------------------------
+set(VECTOR_TEST_SRC "${CMAKE_CURRENT_SOURCE_DIR}/test/test_inplace_vector.cpp")
+set(VECTOR_TEST_BIN "${CMAKE_BINARY_DIR}/test_inplace_vector_host")
+set(MAIN_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/main")
+set(VECTOR_TEST_HEADERS
+    "${MAIN_INCLUDE_DIR}/marcpawl_inplace_vector.hpp"
+)
+
+add_custom_target(run_vector_tests ALL
+    COMMAND c++ -std=c++23 -I${MAIN_INCLUDE_DIR} ${VECTOR_TEST_SRC} -o ${VECTOR_TEST_BIN}
+    COMMAND ${VECTOR_TEST_BIN}
+    DEPENDS
+        ${VECTOR_TEST_SRC}
+        ${VECTOR_TEST_HEADERS}
+    COMMENT "Building and running host tests for inplace_vector..."
+    VERBATIM
+)
+
+set(STRING_TEST_SRC "${CMAKE_CURRENT_SOURCE_DIR}/test/test_inplace_string.cpp")
+set(STRING_TEST_BIN "${CMAKE_BINARY_DIR}/test_inplace_string_host")
+set(MAIN_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/main")
+set(STRING_TEST_HEADERS
+    "${MAIN_INCLUDE_DIR}/marcpawl_inplace_string.hpp"
+    "${MAIN_INCLUDE_DIR}/marcpawl_inplace_vector.hpp"
+)
+
+add_custom_target(run_string_tests ALL
+    COMMAND c++ -std=c++23 -I${MAIN_INCLUDE_DIR} ${STRING_TEST_SRC} -o ${STRING_TEST_BIN}
+    COMMAND ${STRING_TEST_BIN}
+    DEPENDS
+        ${STRING_TEST_SRC}
+        ${STRING_TEST_HEADERS}
+    COMMENT "Building and running host tests for inplace_string..."
+    VERBATIM
+)
+
+# Ensure tests pass as part of the build
+add_dependencies(app run_vector_tests)

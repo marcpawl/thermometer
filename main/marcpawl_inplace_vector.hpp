@@ -24,9 +24,16 @@ namespace marcpawl
   template <class T, std::size_t N>
   class inplace_vector
   {
+    template <class, std::size_t>
+    friend class inplace_vector;
+
     static_assert(N > 0, "inplace_vector<T, N>: N must be > 0");
     static_assert(!std::is_reference_v<T>, "inplace_vector<T, N>: T must not be a reference");
     static_assert(std::is_object_v<T>, "inplace_vector<T, N>: T must be an object type");
+    static_assert(std::is_default_constructible_v<T>, "inplace_vector<T, N>: T must be default constructible");
+    static_assert(std::is_trivially_copyable_v<T>, "inplace_vector<T, N>: T must be trivially copyable");
+    static_assert(std::is_trivially_destructible_v<T>, "inplace_vector<T, N>: T must be trivially destructible");
+
 
   public:
     using value_type = T;
@@ -43,10 +50,34 @@ namespace marcpawl
 
     static constexpr size_type static_capacity = N;
 
+    inplace_vector() noexcept = default;
+    inplace_vector(const inplace_vector&) noexcept= default;
+    inplace_vector(inplace_vector&&) noexcept = default;
+    inplace_vector(std::initializer_list<T> il)
+    {
+      for (auto it = il.begin(); it != il.end() && m_size < N; ++it, ++m_size) {
+        m_storage[m_size] = *it;
+      }
+    }
+    ~inplace_vector() noexcept = default;
+    inplace_vector& operator=(const inplace_vector&) = default;
+    inplace_vector& operator=(inplace_vector&&) = default;
+
+    template<size_t M>
+    bool operator==(const inplace_vector<T, M>& other) const
+    {
+      if (this->size() != other.size())
+      {
+        return false;
+      }
+      return std::equal(this->begin(), this->end(),
+        other.begin());
+    }
+
     // ---- iterators ----
-    [[nodiscard]] constexpr iterator begin() noexcept { return data(); }
-    [[nodiscard]] constexpr const_iterator begin() const noexcept { return data(); }
-    [[nodiscard]] constexpr const_iterator cbegin() const noexcept { return data(); }
+    [[nodiscard]] constexpr iterator begin() noexcept { return m_storage.begin(); }
+    [[nodiscard]] constexpr const_iterator begin() const noexcept { return m_storage.begin(); }
+    [[nodiscard]] constexpr const_iterator cbegin() const noexcept { return m_storage.begin(); }
 
     [[nodiscard]] constexpr iterator end() noexcept { return data() + m_size; }
     [[nodiscard]] constexpr const_iterator end() const noexcept { return data() + m_size; }
@@ -112,12 +143,12 @@ namespace marcpawl
     constexpr pointer data() noexcept
     {
       // Storage is contiguous; return pointer to first element (if any).
-      return ptr_at(0);
+      return m_storage.data();
     }
 
     constexpr const_pointer data() const noexcept
     {
-      return ptr_at(0);
+      return m_storage.data();
     }
 
     // ---- modifiers ----
@@ -131,6 +162,29 @@ namespace marcpawl
       return back();
     }
 
+    constexpr void push_back(const value_type& value)
+    {
+      emplace_back(value);
+    }
+
+
+    template <class InputIt>
+    constexpr void assign(InputIt first, InputIt last)
+    {
+      size_type new_size = 0;
+      for (auto it = first; it != last; ++it) {
+        if (new_size >= capacity()) {
+          throw std::length_error("inplace_vector: capacity exceeded");
+        }
+        m_storage[new_size++] = *it;
+      }
+      m_size = new_size;
+    }
+
+    constexpr void assign(std::initializer_list<T> il)
+    {
+      assign(il.begin(), il.end());
+    }
 
     constexpr void swap(inplace_vector& other) noexcept
     {
@@ -142,16 +196,6 @@ namespace marcpawl
   private:
     std::array<T, N> m_storage{};
     size_type m_size{0};
-
-    constexpr pointer ptr_at(size_type i) noexcept
-    {
-      return std::launder(reinterpret_cast<pointer>(&m_storage[i]));
-    }
-
-    constexpr const_pointer ptr_at(size_type i) const noexcept
-    {
-      return std::launder(reinterpret_cast<const_pointer>(&m_storage[i]));
-    }
   };
 
 
