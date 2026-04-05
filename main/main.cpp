@@ -1,0 +1,121 @@
+extern "C" {
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_app_desc.h"
+#include "esp_system.h"
+#include "esp_event.h"
+#include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_http_client.h"
+#include "esp_https_ota.h"
+#include "protocol_examples_common.h"
+#include "string.h"
+#ifdef CONFIG_EXAMPLE_USE_CERT_BUNDLE
+#include "esp_crt_bundle.h"
+#endif
+
+#include "nvs.h"
+#include "nvs_flash.h"
+#include "protocol_examples_common.h"
+#include <sys/socket.h>
+#if CONFIG_EXAMPLE_CONNECT_WIFI
+#include "esp_wifi.h"
+#endif
+}
+
+#include "model.hpp"
+#include "ota_task.hpp"
+#include "poster_task.hpp"
+#include "sensor_task.hpp"
+
+
+static const char* TAG = "main";
+static const int HASH_LEN = 32;
+
+static void check_version() {
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+
+    ESP_LOGI(TAG, "Running Version: %s\n", app_desc->version);
+    ESP_LOGI(TAG, "Secure version: %u\n", app_desc->secure_version);
+    ESP_LOGI(TAG, "project name: %s\n", app_desc->project_name);
+    ESP_LOGI(TAG, "Compile Time: %s %s\n", app_desc->date, app_desc->time);
+}
+
+
+static void print_sha256(const uint8_t *image_hash, const char *label) {
+    char hash_print[HASH_LEN * 2 + 1];
+    hash_print[HASH_LEN * 2] = 0;
+    for (int i = 0; i < HASH_LEN; ++i) {
+        sprintf(&hash_print[i * 2], "%02x", image_hash[i]);
+    }
+    ESP_LOGI(TAG, "%s %s", label, hash_print);
+}
+
+static void get_sha256_of_partitions(void) {
+    uint8_t sha_256[HASH_LEN] = {0};
+    esp_partition_t partition;
+
+    // get sha256 digest for bootloader
+    partition.address = ESP_BOOTLOADER_OFFSET;
+    partition.size = ESP_PARTITION_TABLE_OFFSET;
+    partition.type = ESP_PARTITION_TYPE_APP;
+    esp_partition_get_sha256(&partition, sha_256);
+    print_sha256(sha_256, "SHA-256 for bootloader: ");
+
+    // get sha256 digest for running partition
+    esp_partition_get_sha256(esp_ota_get_running_partition(), sha_256);
+    print_sha256(sha_256, "SHA-256 for current firmware: ");
+}
+
+static Model model;
+static std::unique_ptr<PosterTask> poster_task;
+static std::unique_ptr<SensorTask> sensor_task;
+
+extern "C" void app_main(void) {
+    ESP_LOGI(TAG, "OTA example app_main start");
+    check_version();
+
+    // Initialize NVS.
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // 1.OTA app partition table has a smaller NVS partition size than the non-OTA
+        // partition table. This size mismatch may cause NVS initialization to fail.
+        // 2.NVS partition contains data in new format and cannot be recognized by this version of code.
+        // If this happens, we erase NVS partition and initialize NVS again.
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+
+    get_sha256_of_partitions();
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
+     * Read "Establishing Wi-Fi or Ethernet Connection" section in
+     * examples/protocols/README.md for more information about this function.
+     */
+    ESP_ERROR_CHECK(example_connect());
+
+#if CONFIG_EXAMPLE_CONNECT_WIFI
+    /* Ensure to disable any WiFi power save mode, this allows best throughput
+     * and hence timings for overall OTA operation.
+     */
+    esp_wifi_set_ps(WIFI_PS_NONE);
+#endif // CONFIG_EXAMPLE_CONNECT_WIFI
+
+
+    xTaskCreate(&ota_task, "ota_task", 8192, nullptr, 5, nullptr);
+
+    sensor_task = SensorTask::start(model);
+    poster_task = PosterTask::start(model);
+
+
+
+    while (true)
+    {
+        sensor_task->update();
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+    }
+}

@@ -7,6 +7,11 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 
+#include <optional>
+#include <string_view>
+#include <charconv>
+
+extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_app_desc.h"
@@ -29,8 +34,11 @@
 #if CONFIG_EXAMPLE_CONNECT_WIFI
 #include "esp_wifi.h"
 #endif
+}
 
-#define HASH_LEN 32
+#include "ota_task.hpp"
+#include "ticks.hpp"
+
 
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
 /* The interface name value can refer to if_desc in esp_netif_defaults.h */
@@ -41,11 +49,94 @@ static const char *bind_interface_name = EXAMPLE_NETIF_DESC_STA;
 #endif
 #endif
 
-static const char *TAG = "simple_ota_example";
+static const char *TAG = "ota_task";
 extern const uint8_t server_cert_pem_start[] asm("_binary_ca_cert_pem_start");
 extern const uint8_t server_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 
 #define OTA_URL_SIZE 256
+
+
+struct Version {
+    int major = 0;
+    int minor = 0;
+    int patch = 0;
+
+    bool operator>(const Version& other) const {
+        if (major != other.major) return major > other.major;
+        if (minor != other.minor) return minor > other.minor;
+        return patch > other.patch;
+    }
+
+    // Usually you'd also want == for completeness
+    bool operator==(const Version& other) const {
+        return major == other.major &&
+               minor == other.minor &&
+               patch == other.patch;
+    }
+};
+
+
+/**
+ * Parses a dotted string (e.g., " 10.11.4") into a Version struct.
+ * Handles leading spaces and assumes three components.
+ */
+std::optional<Version> parse_version(std::string_view sv) {
+    Version v;
+
+    // 1. Trim leading whitespace
+    auto start = sv.find_first_not_of(" ");
+    if (start == std::string_view::npos) return std::nullopt;
+    sv.remove_prefix(start);
+
+    auto parse_next = [&](int& value) -> bool {
+        if (sv.empty()) return false;
+
+        // from_chars expects a pointer range [data, data + size]
+        auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), value);
+
+        if (ec != std::errc{}) return false;
+
+        // Move the view past the parsed number
+        size_t parsed_len = ptr - sv.data();
+        sv.remove_prefix(parsed_len);
+
+        // Remove the dot if it exists
+        if (!sv.empty() && sv.front() == '.') {
+            sv.remove_prefix(1);
+        }
+        return true;
+    };
+
+    if (parse_next(v.major) && parse_next(v.minor) && parse_next(v.patch)) {
+        return v;
+    }
+
+    return std::nullopt;
+}
+
+static bool is_newer_version(char* p_app_version, const char* p_running_version)
+{
+    auto app_version_opt = parse_version(p_app_version);;
+    if (! app_version_opt.has_value())
+    {
+        ESP_LOGW(TAG, "Failed to parse app version: %s", p_app_version);
+        return false;
+    }
+    auto running_version_opt = parse_version(p_running_version);
+    if (! running_version_opt.has_value())
+    {
+        ESP_LOGW(TAG, "Failed to parse running version: %s", p_running_version);
+        return false;
+    }
+    if ( app_version_opt.value() > running_version_opt.value() )
+    {
+        ESP_LOGI(TAG, "Newer version found: %s", p_app_version);
+        return true;
+    }
+    ESP_LOGI(TAG, "Distributed version %s is not newer than running %s", p_app_version, p_running_version);
+    return false;
+}
+
 
 esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
     switch (evt->event_id) {
@@ -77,6 +168,63 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
+static esp_http_client_config_t http_client_config()
+{
+    esp_http_client_config_t config;
+    memset(&config, 0, sizeof(config));
+    config.url = CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL;
+    config.host = nullptr;
+    config.port= 0;
+    config.username  = nullptr;
+    config.password = nullptr;
+    config.auth_type = HTTP_AUTH_TYPE_NONE;
+    config.path = nullptr;
+    config.query = nullptr;
+    config.cert_pem  = nullptr;
+    config.cert_len = 0;
+    config.client_cert_len = 0;
+    config.client_key_pem = nullptr;
+    config.client_key_len = 0;
+    config.client_key_password = nullptr;
+    config.client_key_password_len = 0;
+    config.tls_version = ESP_HTTP_CLIENT_TLS_VER_TLS_1_3;
+    config.user_agent = "marcpawl thermometer";
+    config.method = HTTP_METHOD_GET;
+    config.timeout_ms = 10000;
+    config.disable_auto_redirect = false;
+    config.max_redirection_count = 0;
+    config.max_authorization_retries = 0;
+    config.event_handler = _http_event_handler;
+
+
+#ifdef CONFIG_EXAMPLE_USE_CERT_BUNDLE
+        config.crt_bundle_attach = esp_crt_bundle_attach;
+#else
+        config.cert_pem = (char *) server_cert_pem_start;
+#endif /* CONFIG_EXAMPLE_USE_CERT_BUNDLE */
+        config.keep_alive_enable = true;
+#ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
+        config.if_name = &ifr;
+#endif
+#if CONFIG_EXAMPLE_TLS_DYN_BUF_RX_STATIC
+        /* This part applies static buffer strategy for rx dynamic buffer.
+         * This is to avoid frequent allocation and deallocation of dynamic buffer.
+         */
+        config.tls_dyn_buf_strategy = HTTP_TLS_DYN_BUF_RX_STATIC;
+#endif /* CONFIG_EXAMPLE_TLS_DYN_BUF_RX_STATIC */
+
+    return config;
+}
+
+
+static esp_https_ota_config_t https_ota_config(esp_http_client_config_t* config)
+{
+    esp_https_ota_config_t ota_config;
+    memset(&ota_config, 0, sizeof(ota_config));
+    ota_config.http_config = config;
+    return ota_config;
+};
+
 static void do_ota(void *pvParameter) {
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
     esp_netif_t *netif = get_example_netif_from_desc(bind_interface_name);
@@ -88,25 +236,7 @@ static void do_ota(void *pvParameter) {
     esp_netif_get_netif_impl_name(netif, ifr.ifr_name);
     ESP_LOGI(TAG, "Bind interface name is %s", ifr.ifr_name);
 #endif
-    esp_http_client_config_t config = {
-        .url = CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL,
-#ifdef CONFIG_EXAMPLE_USE_CERT_BUNDLE
-        .crt_bundle_attach = esp_crt_bundle_attach,
-#else
-        .cert_pem = (char *) server_cert_pem_start,
-#endif /* CONFIG_EXAMPLE_USE_CERT_BUNDLE */
-        .event_handler = _http_event_handler,
-        .keep_alive_enable = true,
-#ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_BIND_IF
-        .if_name = &ifr,
-#endif
-#if CONFIG_EXAMPLE_TLS_DYN_BUF_RX_STATIC
-        /* This part applies static buffer strategy for rx dynamic buffer.
-         * This is to avoid frequent allocation and deallocation of dynamic buffer.
-         */
-        .tls_dyn_buf_strategy = HTTP_TLS_DYN_BUF_RX_STATIC,
-#endif /* CONFIG_EXAMPLE_TLS_DYN_BUF_RX_STATIC */
-    };
+    esp_http_client_config_t config = http_client_config();
 
 #ifdef CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL_FROM_STDIN
     char url_buf[OTA_URL_SIZE];
@@ -126,9 +256,7 @@ static void do_ota(void *pvParameter) {
     config.skip_cert_common_name_check = true;
 #endif
 
-    esp_https_ota_config_t ota_config = {
-        .http_config = &config,
-    };
+    esp_https_ota_config_t ota_config = https_ota_config(&config);
     esp_https_ota_handle_t ota_handle = NULL;
 
     // 1. Connect and start the OTA session
@@ -150,14 +278,14 @@ static void do_ota(void *pvParameter) {
     // 3. Compare with currently running version
     const esp_app_desc_t *running_desc = esp_app_get_description();
 
-    if (strcmp(app_desc.version, running_desc->version) == 0) {
-        ESP_LOGW(TAG, "Versions are identical (%s). Stopping OTA.", app_desc.version);
+    if (! is_newer_version(app_desc.version, running_desc->version))
+    {
         esp_https_ota_abort(ota_handle);
         return;
     }
 
+
     // 4. Versions are different -> Proceed with download
-    ESP_LOGI(TAG, "Running version %s", app_desc.version);
     ESP_LOGI(TAG, "New version found: %s. Downloading...", app_desc.version);
     while (1) {
         err = esp_https_ota_perform(ota_handle);
@@ -177,81 +305,15 @@ static void do_ota(void *pvParameter) {
     ESP_LOGW(TAG, "OTA upgrade failed. %04X %s", err, esp_err_to_name(err) );
 }
 
-void simple_ota_example_task(void *pvParameter)
+void ota_task(void *pvParameter)
 {
-    ESP_LOGI(TAG, "Starting OTA task");
-    do_ota(pvParameter);
-    ESP_LOGI(TAG, "Ending OTA task");
-    vTaskDelete(NULL);
-}
-
-static void print_sha256(const uint8_t *image_hash, const char *label) {
-    char hash_print[HASH_LEN * 2 + 1];
-    hash_print[HASH_LEN * 2] = 0;
-    for (int i = 0; i < HASH_LEN; ++i) {
-        sprintf(&hash_print[i * 2], "%02x", image_hash[i]);
+    while (true)
+    {
+        do_ota(pvParameter);
+        vTaskDelay(to_ticks(std::chrono::days(1)));
     }
-    ESP_LOGI(TAG, "%s %s", label, hash_print);
 }
 
-static void get_sha256_of_partitions(void) {
-    uint8_t sha_256[HASH_LEN] = {0};
-    esp_partition_t partition;
 
-    // get sha256 digest for bootloader
-    partition.address = ESP_BOOTLOADER_OFFSET;
-    partition.size = ESP_PARTITION_TABLE_OFFSET;
-    partition.type = ESP_PARTITION_TYPE_APP;
-    esp_partition_get_sha256(&partition, sha_256);
-    print_sha256(sha_256, "SHA-256 for bootloader: ");
 
-    // get sha256 digest for running partition
-    esp_partition_get_sha256(esp_ota_get_running_partition(), sha_256);
-    print_sha256(sha_256, "SHA-256 for current firmware: ");
-}
 
-void check_version() {
-    const esp_app_desc_t *app_desc = esp_app_get_description();
-
-    ESP_LOGI(TAG, "Running Version: %s\n", app_desc->version);
-    ESP_LOGI(TAG, "Secure version: %u\n", app_desc->secure_version);
-    ESP_LOGI(TAG, "project name: %s\n", app_desc->project_name);
-    ESP_LOGI(TAG, "Compile Time: %s %s\n", app_desc->date, app_desc->time);
-}
-
-void app_main(void) {
-    ESP_LOGI(TAG, "OTA example app_main start");
-    check_version();
-
-    // Initialize NVS.
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // 1.OTA app partition table has a smaller NVS partition size than the non-OTA
-        // partition table. This size mismatch may cause NVS initialization to fail.
-        // 2.NVS partition contains data in new format and cannot be recognized by this version of code.
-        // If this happens, we erase NVS partition and initialize NVS again.
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(err);
-
-    get_sha256_of_partitions();
-
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-    /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
-     * Read "Establishing Wi-Fi or Ethernet Connection" section in
-     * examples/protocols/README.md for more information about this function.
-     */
-    ESP_ERROR_CHECK(example_connect());
-
-#if CONFIG_EXAMPLE_CONNECT_WIFI
-    /* Ensure to disable any WiFi power save mode, this allows best throughput
-     * and hence timings for overall OTA operation.
-     */
-    esp_wifi_set_ps(WIFI_PS_NONE);
-#endif // CONFIG_EXAMPLE_CONNECT_WIFI
-
-    xTaskCreate(&simple_ota_example_task, "ota_example_task", 8192, NULL, 5, NULL);
-}
